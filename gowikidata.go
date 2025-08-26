@@ -1,11 +1,12 @@
 package gowikidata
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"strconv"
-
-	"github.com/Navid2zp/easyreq"
 )
 
 var (
@@ -20,18 +21,53 @@ const (
 	imageResizerURL   = "%s/w/thumb.php?width=%d&f=%s"
 )
 
+// getHeaders returns a map of headers with proper User-Agent for API requests
+func getHeaders() map[string]string {
+	return map[string]string{
+		"User-Agent": "Mozilla/5.0 (compatible; go-wikidata/1.0; +https://github.com/Navid2zp/go-wikidata)",
+	}
+}
+
+// makeRequest makes an HTTP request with proper headers and returns the response
+func makeRequest(method, url string, responseData interface{}) error {
+	req, err := http.NewRequest(method, url, nil)
+	if err != nil {
+		return err
+	}
+
+	// Set headers
+	headers := getHeaders()
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("request failed with status code %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	return json.Unmarshal(body, responseData)
+}
+
 // GetPageItem returns Wikipedia page item ID
 func GetPageItem(slug string) (string, error) {
 	url := fmt.Sprintf(wikipediaQueryURL, WikipediaDomain, slug)
 
 	wikipediaQuery := WikiPediaQuery{}
-	res, err := easyreq.Make("get", url, nil, "", "json", &wikipediaQuery, nil)
+	err := makeRequest("GET", url, &wikipediaQuery)
 	if err != nil {
 		return "", err
-	}
-
-	if res.StatusCode() != 200 {
-		return "", fmt.Errorf("request failed with status code %d", res.StatusCode())
 	}
 
 	item := ""
@@ -121,12 +157,9 @@ func (r *WikiDataGetEntitiesRequest) SetSiteFilter(sites []string) *WikiDataGetE
 // It will send the request and unmarshales the response.
 func (r *WikiDataGetEntitiesRequest) Get() (*map[string]Entity, error) {
 	responseData := GetEntitiesResponse{}
-	res, err := easyreq.Make("GET", r.URL, nil, "", "json", &responseData, nil)
+	err := makeRequest("GET", r.URL, &responseData)
 	if err != nil {
 		return nil, err
-	}
-	if res.StatusCode() != 200 {
-		return nil, fmt.Errorf("request failed with status code %d", res.StatusCode())
 	}
 	return &responseData.Entities, nil
 }
@@ -179,12 +212,9 @@ func (r *WikiDataGetClaimsRequest) SetProps(props []string) *WikiDataGetClaimsRe
 // Get creates a new request for claims and returns the response or an error
 func (r *WikiDataGetClaimsRequest) Get() (*map[string][]Claim, error) {
 	responseData := GetClaimsResponse{}
-	res, err := easyreq.Make("GET", r.URL, nil, "", "json", &responseData, nil)
+	err := makeRequest("GET", r.URL, &responseData)
 	if err != nil {
 		return nil, err
-	}
-	if res.StatusCode() != 200 {
-		return nil, fmt.Errorf("request failed with status code %d", res.StatusCode())
 	}
 	return &responseData.Claims, nil
 }
@@ -195,12 +225,9 @@ func (r *WikiDataGetClaimsRequest) Get() (*map[string][]Claim, error) {
 func GetAvailableBadges() ([]string, error) {
 	var data struct{ Badges []string }
 	url := fmt.Sprintf(wikiDataAPIURL, WikidataDomain, "wbavailablebadges")
-	res, err := easyreq.Make("GET", url, nil, "", "json", &data, nil)
+	err := makeRequest("GET", url, &data)
 	if err != nil {
 		return nil, err
-	}
-	if res.StatusCode() != 200 {
-		return nil, fmt.Errorf("request failed with status code %d", res.StatusCode())
 	}
 	return data.Badges, nil
 }
@@ -263,12 +290,9 @@ func (r *WikiDataSearchEntitiesRequest) SetContinue(c int) *WikiDataSearchEntiti
 // Get makes a entity search request and returns the response or an error
 func (r *WikiDataSearchEntitiesRequest) Get() (*SearchEntitiesResponse, error) {
 	responseData := SearchEntitiesResponse{}
-	res, err := easyreq.Make("GET", r.URL, nil, "", "json", &responseData, nil)
+	err := makeRequest("GET", r.URL, &responseData)
 	if err != nil {
 		return nil, err
-	}
-	if res.StatusCode() != 200 {
-		return nil, fmt.Errorf("request failed with status code %d", res.StatusCode())
 	}
 
 	responseData.SearchRequest = *r
